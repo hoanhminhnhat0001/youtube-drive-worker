@@ -39,6 +39,8 @@ jobs:
           GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
           YOUTUBE_SHEET_ID: ${{ secrets.YOUTUBE_SHEET_ID }}
           YOUTUBE_ROOT_FOLDER_ID: ${{ secrets.YOUTUBE_ROOT_FOLDER_ID }}
+          YOUTUBE_PROXY: ${{ secrets.YOUTUBE_PROXY }}
+          YOUTUBE_COOKIES_B64: ${{ secrets.YOUTUBE_COOKIES_B64 }}
           YOUTUBE_SHEET_NAME: LINK YOUTUBE
           WORKER_INDEX: ${{ matrix.worker }}
           WORKER_COUNT: 3
