@@ -18,9 +18,9 @@ jobs:
     timeout-minutes: 330
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 1
       matrix:
-        worker: [0, 1, 2]
+        worker: [0]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -42,7 +42,7 @@ jobs:
           YOUTUBE_PROXY: ${{ secrets.YOUTUBE_PROXY }}
           YOUTUBE_COOKIES_B64: ${{ secrets.YOUTUBE_COOKIES_B64 }}
           YOUTUBE_SHEET_NAME: LINK YOUTUBE
-          WORKER_INDEX: ${{ matrix.worker }}
-          WORKER_COUNT: 3
+          WORKER_INDEX: 0
+          WORKER_COUNT: 1
           MAX_VIDEOS: 10
         run: python worker.py
