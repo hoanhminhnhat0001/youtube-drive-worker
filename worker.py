@@ -103,6 +103,7 @@ def download_video(url, directory, proxy_session="", on_proxy_rotate=None):
         "yt-dlp", "--no-playlist", "--newline", "--restrict-filenames",
         "--retries", "5", "--fragment-retries", "5",
         "--sleep-requests", "1", "--sleep-interval", "2", "--max-sleep-interval", "8",
+        "--remote-components", "ejs:github",
         "--merge-output-format", "mp4",
         "-f", "bestvideo+bestaudio/best",
         "--print", "after_move:filepath", "-o", output, url,
@@ -129,7 +130,12 @@ def download_video(url, directory, proxy_session="", on_proxy_rotate=None):
         error_text = result.stderr or result.stdout or ""
         if result.returncode == 0:
             break
-        if "Sign in to confirm" not in error_text and "Please sign in" not in error_text:
+        rotate_markers = (
+            "Sign in to confirm", "Please sign in", "HTTP Error 403",
+            "403: Forbidden", "WRONG_VERSION_NUMBER", "UNEXPECTED_EOF_WHILE_READING",
+            "more expected", "Remote components challenge solver",
+        )
+        if not any(marker in error_text for marker in rotate_markers):
             break
         if attempt_index + 1 < proxy_attempts:
             active_session = secrets.token_hex(8)
