@@ -4,6 +4,7 @@ import json
 import mimetypes
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import tempfile
@@ -64,6 +65,7 @@ def safe_error(error, url):
     proxy_url = os.environ.get("YOUTUBE_PROXY", "").strip()
     if proxy_url:
         text = text.replace(proxy_url, "<redacted-proxy>")
+    text = re.sub(r"(?i)\b(?:https?|socks5h?)://[^\s]+", "<redacted-proxy>", text)
     text = re.sub(r"\s+", " ", text).strip()
     if "Sign in to confirm" in text or "Please sign in" in text:
         return "YOUTUBE_YEU_CAU_DANG_NHAP: GitHub runner bi YouTube chan/chong bot; can cookie YouTube hop le."
@@ -107,6 +109,7 @@ def download_video(url, directory):
     ]
     proxy_url = os.environ.get("YOUTUBE_PROXY", "").strip()
     if proxy_url:
+        proxy_url = proxy_url.replace("{session}", secrets.token_hex(8))
         command[1:1] = ["--proxy", proxy_url]
     cookies_b64 = os.environ.get("YOUTUBE_COOKIES_B64", "").strip()
     if cookies_b64:
