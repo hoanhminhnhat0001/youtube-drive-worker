@@ -1,0 +1,43 @@
+name: YouTube to Google Drive
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/20 * * * *"
+
+concurrency:
+  group: youtube-to-drive
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        worker: [0, 1, 2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: pip install -r requirements.txt
+      - name: Download and upload authorized videos
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          YOUTUBE_SHEET_ID: ${{ secrets.YOUTUBE_SHEET_ID }}
+          YOUTUBE_ROOT_FOLDER_ID: ${{ secrets.YOUTUBE_ROOT_FOLDER_ID }}
+          YOUTUBE_SHEET_NAME: LINK YOUTUBE
+          WORKER_INDEX: ${{ matrix.worker }}
+          WORKER_COUNT: 3
+          MAX_VIDEOS: 10
+        run: python worker.py
