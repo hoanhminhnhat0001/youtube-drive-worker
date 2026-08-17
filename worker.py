@@ -97,7 +97,7 @@ def find_existing_file(drive, marker):
     return files[0] if files else None
 
 
-def download_video(url, directory):
+def download_video(url, directory, proxy_session="", on_proxy_rotate=None):
     output = str(directory / "%(title).160B [%(id)s].%(ext)s")
     command = [
         "yt-dlp", "--no-playlist", "--newline", "--restrict-filenames",
@@ -118,11 +118,12 @@ def download_video(url, directory):
         command[1:1] = ["--cookies", str(cookie_path)]
 
     result = None
+    active_session = proxy_session or secrets.token_hex(8)
     proxy_attempts = 3 if proxy_template and "{session}" in proxy_template else 1
-    for _ in range(proxy_attempts):
+    for attempt_index in range(proxy_attempts):
         attempt_command = list(command)
         if proxy_template:
-            proxy_url = proxy_template.replace("{session}", secrets.token_hex(8))
+            proxy_url = proxy_template.replace("{session}", active_session)
             attempt_command[1:1] = ["--proxy", proxy_url]
         result = subprocess.run(attempt_command, capture_output=True, text=True, check=False)
         error_text = result.stderr or result.stdout or ""
@@ -130,6 +131,10 @@ def download_video(url, directory):
             break
         if "Sign in to confirm" not in error_text and "Please sign in" not in error_text:
             break
+        if attempt_index + 1 < proxy_attempts:
+            active_session = secrets.token_hex(8)
+            if on_proxy_rotate:
+                on_proxy_rotate(active_session)
     assert result is not None
     if result.returncode:
         raise RuntimeError(result.stderr or result.stdout or "yt-dlp failed")
@@ -140,6 +145,32 @@ def download_video(url, directory):
     if not files:
         raise RuntimeError("yt-dlp completed without a media file")
     return files[0]
+
+
+def proxy_session_cell(worker_index):
+    return f"T{worker_index + 2}"
+
+
+def load_proxy_session(sheets, sheet_id, sheet_name, worker_index):
+    cell = proxy_session_cell(worker_index)
+    values = sheets.spreadsheets().values().get(
+        spreadsheetId=sheet_id, range=f"'{sheet_name}'!{cell}",
+    ).execute().get("values", [])
+    if values and values[0] and values[0][0].strip():
+        return values[0][0].strip()
+    session = secrets.token_hex(8)
+    save_proxy_session(sheets, sheet_id, sheet_name, worker_index, session)
+    return session
+
+
+def save_proxy_session(sheets, sheet_id, sheet_name, worker_index, session):
+    row = worker_index + 2
+    sheets.spreadsheets().values().update(
+        spreadsheetId=sheet_id,
+        range=f"'{sheet_name}'!S{row}:T{row}",
+        valueInputOption="RAW",
+        body={"values": [[f"Worker {worker_index} proxy session", session]]},
+    ).execute()
 
 
 def upload_video(drive, path, folder_id, marker):
@@ -218,6 +249,12 @@ def main():
         spreadsheetId=sheet_id,
         range=f"'{sheet_name}'!A2:Q",
     ).execute().get("values", [])
+    proxy_session = load_proxy_session(sheets, sheet_id, sheet_name, worker_index)
+
+    def persist_proxy_session(session):
+        nonlocal proxy_session
+        proxy_session = session
+        save_proxy_session(sheets, sheet_id, sheet_name, worker_index, session)
 
     candidates = []
     for offset, original in enumerate(rows, start=2):
@@ -253,7 +290,10 @@ def main():
                 uploaded = existing
             else:
                 with tempfile.TemporaryDirectory(prefix="youtube-drive-") as temp:
-                    path = download_video(url, Path(temp))
+                    path = download_video(
+                        url, Path(temp), proxy_session=proxy_session,
+                        on_proxy_rotate=persist_proxy_session,
+                    )
                     uploaded = upload_video(drive, path, folder_id, marker)
             link = uploaded.get("webViewLink") or f"https://drive.google.com/file/d/{uploaded['id']}/view"
             update_row(sheets, sheet_id, sheet_name, offset, {

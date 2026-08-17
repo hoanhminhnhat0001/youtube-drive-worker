@@ -41,6 +41,10 @@ class WorkerTests(unittest.TestCase):
         url = "https://youtu.be/example"
         self.assertNotEqual(worker.source_hash(f"{url}|folder-a"), worker.source_hash(f"{url}|folder-b"))
 
+    def test_proxy_session_cells_are_stable_per_worker(self):
+        self.assertEqual(worker.proxy_session_cell(0), "T2")
+        self.assertEqual(worker.proxy_session_cell(2), "T4")
+
 
 if __name__ == "__main__":
     unittest.main()
