@@ -61,6 +61,9 @@ def source_hash(url):
 
 def safe_error(error, url):
     text = str(error).replace(url, "<redacted-youtube-url>")
+    proxy_url = os.environ.get("YOUTUBE_PROXY", "").strip()
+    if proxy_url:
+        text = text.replace(proxy_url, "<redacted-proxy>")
     text = re.sub(r"\s+", " ", text).strip()
     if "Sign in to confirm" in text or "Please sign in" in text:
         return "YOUTUBE_YEU_CAU_DANG_NHAP: GitHub runner bi YouTube chan/chong bot; can cookie YouTube hop le."
@@ -102,6 +105,9 @@ def download_video(url, directory):
         "-f", "bestvideo+bestaudio/best",
         "--print", "after_move:filepath", "-o", output, url,
     ]
+    proxy_url = os.environ.get("YOUTUBE_PROXY", "").strip()
+    if proxy_url:
+        command[1:1] = ["--proxy", proxy_url]
     cookies_b64 = os.environ.get("YOUTUBE_COOKIES_B64", "").strip()
     if cookies_b64:
         cookie_path = directory / ".youtube-cookies.txt"
