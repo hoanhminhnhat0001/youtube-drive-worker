@@ -19,6 +19,10 @@ class WorkerTests(unittest.TestCase):
         self.assertNotIn(url, message)
         self.assertIn("<redacted-youtube-url>", message)
 
+    def test_bot_challenge_error_is_actionable(self):
+        message = worker.safe_error(RuntimeError("Sign in to confirm you're not a bot"), "https://youtu.be/x")
+        self.assertTrue(message.startswith("YOUTUBE_YEU_CAU_DANG_NHAP:"))
+
     def test_same_folder_is_assigned_to_one_worker(self):
         key = "Vật Lý\u0001Thầy A\u0001Chương 1"
         self.assertEqual(worker.partition(key, 3), worker.partition(key, 3))

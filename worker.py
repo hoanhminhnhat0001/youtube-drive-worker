@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import json
 import mimetypes
@@ -60,7 +61,14 @@ def source_hash(url):
 
 def safe_error(error, url):
     text = str(error).replace(url, "<redacted-youtube-url>")
-    return re.sub(r"\s+", " ", text).strip()[:1000]
+    text = re.sub(r"\s+", " ", text).strip()
+    if "Sign in to confirm" in text or "Please sign in" in text:
+        return "YOUTUBE_YEU_CAU_DANG_NHAP: GitHub runner bi YouTube chan/chong bot; can cookie YouTube hop le."
+    if "Private video" in text:
+        return "VIDEO_RIENG_TU: Tai khoan YouTube khong co quyen xem video nay."
+    if "Video unavailable" in text:
+        return "VIDEO_KHONG_KHA_DUNG: Video da bi xoa, khoa theo khu vuc hoac khong con truy cap duoc."
+    return text[-1000:]
 
 
 def update_row(sheets, sheet_id, sheet_name, row_number, values):
@@ -94,6 +102,14 @@ def download_video(url, directory):
         "-f", "bestvideo+bestaudio/best",
         "--print", "after_move:filepath", "-o", output, url,
     ]
+    cookies_b64 = os.environ.get("YOUTUBE_COOKIES_B64", "").strip()
+    if cookies_b64:
+        cookie_path = directory / ".youtube-cookies.txt"
+        try:
+            cookie_path.write_bytes(base64.b64decode(cookies_b64, validate=True))
+        except (ValueError, base64.binascii.Error) as error:
+            raise RuntimeError("YOUTUBE_COOKIES_B64 is invalid") from error
+        command[1:1] = ["--cookies", str(cookie_path)]
     result = subprocess.run(command, capture_output=True, text=True, check=False)
     if result.returncode:
         raise RuntimeError(result.stderr or result.stdout or "yt-dlp failed")
