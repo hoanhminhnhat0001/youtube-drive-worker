@@ -261,7 +261,7 @@ def main():
         row = original + [""] * (len(HEADERS) - len(original))
         url = row[9].strip()
         status = row[11].strip().upper() or "PENDING"
-        if not url or status in {"ĐÃ XONG", "LỖI"}:
+        if not url or status == "ĐÃ XONG":
             continue
         folder_partition_key = "\u0001".join((row[1], row[2], row[4]))
         if partition(folder_partition_key, worker_count) != worker_index:
