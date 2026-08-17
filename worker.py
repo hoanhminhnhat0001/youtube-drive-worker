@@ -183,8 +183,7 @@ def main():
         range=f"'{sheet_name}'!A2:Q",
     ).execute().get("values", [])
 
-    processed = 0
-    attempted = 0
+    candidates = []
     for offset, original in enumerate(rows, start=2):
         row = original + [""] * (len(HEADERS) - len(original))
         url = row[9].strip()
@@ -195,9 +194,17 @@ def main():
         if partition(folder_partition_key, worker_count) != worker_index:
             continue
         try:
-            attempts = int(float(row[14] or 0)) + 1
+            previous_attempts = int(float(row[14] or 0))
         except (TypeError, ValueError):
-            attempts = 1
+            previous_attempts = 0
+        candidates.append((previous_attempts, offset, row, url))
+
+    # Scan every catalog entry before retrying older failures repeatedly.
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    processed = 0
+    attempted = 0
+    for previous_attempts, offset, row, url in candidates[:max_videos]:
+        attempts = previous_attempts + 1
         attempted += 1
         update_row(sheets, sheet_id, sheet_name, offset, {
             "L": "", "O": attempts, "P": "", "Q": utc_now(),
@@ -222,8 +229,6 @@ def main():
             update_row(sheets, sheet_id, sheet_name, offset, {
                 "L": final_status, "P": safe_error(error, url), "Q": utc_now(),
             })
-        if attempted >= max_videos:
-            break
     print(json.dumps({"worker": worker_index, "attempted": attempted, "processed": processed}))
 
 
