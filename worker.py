@@ -107,10 +107,7 @@ def download_video(url, directory):
         "-f", "bestvideo+bestaudio/best",
         "--print", "after_move:filepath", "-o", output, url,
     ]
-    proxy_url = os.environ.get("YOUTUBE_PROXY", "").strip()
-    if proxy_url:
-        proxy_url = proxy_url.replace("{session}", secrets.token_hex(8))
-        command[1:1] = ["--proxy", proxy_url]
+    proxy_template = os.environ.get("YOUTUBE_PROXY", "").strip()
     cookies_b64 = os.environ.get("YOUTUBE_COOKIES_B64", "").strip()
     if cookies_b64:
         cookie_path = directory / ".youtube-cookies.txt"
@@ -119,7 +116,21 @@ def download_video(url, directory):
         except (ValueError, base64.binascii.Error) as error:
             raise RuntimeError("YOUTUBE_COOKIES_B64 is invalid") from error
         command[1:1] = ["--cookies", str(cookie_path)]
-    result = subprocess.run(command, capture_output=True, text=True, check=False)
+
+    result = None
+    proxy_attempts = 3 if proxy_template and "{session}" in proxy_template else 1
+    for _ in range(proxy_attempts):
+        attempt_command = list(command)
+        if proxy_template:
+            proxy_url = proxy_template.replace("{session}", secrets.token_hex(8))
+            attempt_command[1:1] = ["--proxy", proxy_url]
+        result = subprocess.run(attempt_command, capture_output=True, text=True, check=False)
+        error_text = result.stderr or result.stdout or ""
+        if result.returncode == 0:
+            break
+        if "Sign in to confirm" not in error_text and "Please sign in" not in error_text:
+            break
+    assert result is not None
     if result.returncode:
         raise RuntimeError(result.stderr or result.stdout or "yt-dlp failed")
     candidates = [Path(line.strip()) for line in result.stdout.splitlines() if line.strip()]
