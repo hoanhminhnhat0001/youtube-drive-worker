@@ -379,7 +379,7 @@ def main():
     worker_index = int(os.environ.get("WORKER_INDEX", "0"))
     worker_count = int(os.environ.get("WORKER_COUNT", "3"))
     max_videos = int(os.environ.get("MAX_VIDEOS", "10"))
-    ignore_previous_errors = os.environ.get("IGNORE_PREVIOUS_ERRORS", "").strip() == "1"
+    ignore_previous_errors = os.environ.get("IGNORE_PREVIOUS_ERRORS", "1").strip() == "1"
     root_folder_id = required("YOUTUBE_ROOT_FOLDER_ID")
 
     creds = credentials()
