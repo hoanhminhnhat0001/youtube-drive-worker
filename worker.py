@@ -6,8 +6,12 @@ import os
 import re
 import secrets
 import shutil
+import socket
 import subprocess
 import tempfile
+import time
+import urllib.parse
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -27,6 +31,98 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
     "https://www.googleapis.com/auth/spreadsheets",
 ]
+VPNBOOK_SERVERS = [
+    "us16.vpnbook.com", "us178.vpnbook.com", "ca149.vpnbook.com",
+    "ca196.vpnbook.com", "uk205.vpnbook.com", "uk68.vpnbook.com",
+    "de20.vpnbook.com", "de220.vpnbook.com", "fr200.vpnbook.com",
+    "fr2311.vpnbook.com",
+]
+
+
+class VpnBookManager:
+    def __init__(self, sheets, sheet_id, sheet_name):
+        self.sheets = sheets
+        self.sheet_id = sheet_id
+        self.sheet_name = sheet_name
+        self.index = self._load_index()
+        self.process = None
+        self.temp_dir = Path(tempfile.mkdtemp(prefix="vpnbook-"))
+
+    def _load_index(self):
+        values = self.sheets.spreadsheets().values().get(
+            spreadsheetId=self.sheet_id, range=f"'{self.sheet_name}'!V2",
+        ).execute().get("values", [])
+        try:
+            return int(values[0][0]) % len(VPNBOOK_SERVERS)
+        except (IndexError, TypeError, ValueError):
+            return 0
+
+    def _save_index(self):
+        self.sheets.spreadsheets().values().update(
+            spreadsheetId=self.sheet_id,
+            range=f"'{self.sheet_name}'!U2:V2",
+            valueInputOption="RAW",
+            body={"values": [["VPNBook server index", self.index]]},
+        ).execute()
+
+    @staticmethod
+    def _fetch(url):
+        request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return response.read()
+
+    def _credentials(self):
+        html = self._fetch("https://www.vpnbook.com/freevpn/openvpn").decode("utf-8", "replace")
+        match = re.search(r"Password\s*</[^>]+>\s*<code[^>]*>([^<]+)</code>", html, re.I)
+        if not match:
+            match = re.search(r"Password.{0,500}?<code[^>]*>([^<]+)</code>", html, re.I | re.S)
+        if not match:
+            raise RuntimeError("VPNBook password was not found on the official page")
+        return "vpnbook", match.group(1).strip()
+
+    def connect(self):
+        self.disconnect()
+        server = VPNBOOK_SERVERS[self.index]
+        ip = socket.gethostbyname(server)
+        query = urllib.parse.urlencode({"hostname": server, "protocol": "udp25000", "ip": ip})
+        config = self._fetch(f"https://www.vpnbook.com/api/openvpn?{query}")
+        config_path = self.temp_dir / "vpnbook.ovpn"
+        auth_path = self.temp_dir / "auth.txt"
+        log_path = self.temp_dir / "openvpn.log"
+        config_path.write_bytes(config)
+        username, password = self._credentials()
+        auth_path.write_text(f"{username}\n{password}\n", encoding="utf-8")
+        command = [
+            "sudo", "openvpn", "--config", str(config_path),
+            "--auth-user-pass", str(auth_path), "--auth-nocache",
+            "--writepid", str(self.temp_dir / "openvpn.pid"),
+            "--log", str(log_path),
+        ]
+        self.process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        deadline = time.time() + 45
+        while time.time() < deadline:
+            if self.process.poll() is not None:
+                break
+            if log_path.exists() and "Initialization Sequence Completed" in log_path.read_text(errors="replace"):
+                return server
+            time.sleep(1)
+        tail = log_path.read_text(errors="replace")[-1000:] if log_path.exists() else ""
+        self.disconnect()
+        raise RuntimeError(f"VPNBook failed to connect: {tail}")
+
+    def disconnect(self):
+        if self.process and self.process.poll() is None:
+            self.process.terminate()
+            try:
+                self.process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+        self.process = None
+
+    def rotate(self):
+        self.index = (self.index + 1) % len(VPNBOOK_SERVERS)
+        self._save_index()
+        return self.connect()
 
 
 def required(name):
@@ -97,7 +193,7 @@ def find_existing_file(drive, marker):
     return files[0] if files else None
 
 
-def download_video(url, directory, proxy_session="", on_proxy_rotate=None):
+def download_video(url, directory, proxy_session="", on_network_rotate=None):
     output = str(directory / "%(title).160B [%(id)s].%(ext)s")
     command = [
         "yt-dlp", "--no-playlist", "--newline", "--restrict-filenames",
@@ -122,7 +218,7 @@ def download_video(url, directory, proxy_session="", on_proxy_rotate=None):
 
     result = None
     active_session = proxy_session or secrets.token_hex(8)
-    proxy_attempts = 3 if proxy_template and "{session}" in proxy_template else 1
+    proxy_attempts = 3 if (proxy_template and "{session}" in proxy_template) or on_network_rotate else 1
     for attempt_index in range(proxy_attempts):
         attempt_command = list(command)
         if proxy_template:
@@ -140,9 +236,10 @@ def download_video(url, directory, proxy_session="", on_proxy_rotate=None):
         if not any(marker in error_text for marker in rotate_markers):
             break
         if attempt_index + 1 < proxy_attempts:
-            active_session = secrets.token_hex(8)
-            if on_proxy_rotate:
-                on_proxy_rotate(active_session)
+            if proxy_template:
+                active_session = secrets.token_hex(8)
+            if on_network_rotate:
+                on_network_rotate(active_session if proxy_template else None)
     assert result is not None
     if result.returncode:
         raise RuntimeError(result.stderr or result.stdout or "yt-dlp failed")
@@ -259,11 +356,21 @@ def main():
         range=f"'{sheet_name}'!A2:Q",
     ).execute().get("values", [])
     proxy_session = load_proxy_session(sheets, sheet_id, sheet_name, worker_index)
+    vpnbook = None
+    if os.environ.get("VPNBOOK_ENABLED", "").strip() == "1":
+        vpnbook = VpnBookManager(sheets, sheet_id, sheet_name)
+        vpnbook.connect()
 
     def persist_proxy_session(session):
         nonlocal proxy_session
         proxy_session = session
         save_proxy_session(sheets, sheet_id, sheet_name, worker_index, session)
+
+    def rotate_network(session):
+        if session:
+            persist_proxy_session(session)
+        if vpnbook:
+            vpnbook.rotate()
 
     candidates = []
     for offset, original in enumerate(rows, start=2):
@@ -304,7 +411,7 @@ def main():
                 with tempfile.TemporaryDirectory(prefix="youtube-drive-") as temp:
                     path = download_video(
                         url, Path(temp), proxy_session=proxy_session,
-                        on_proxy_rotate=persist_proxy_session,
+                        on_network_rotate=rotate_network if vpnbook or os.environ.get("YOUTUBE_PROXY") else None,
                     )
                     uploaded = upload_video(drive, path, folder_id, marker)
             link = uploaded.get("webViewLink") or f"https://drive.google.com/file/d/{uploaded['id']}/view"
@@ -318,6 +425,8 @@ def main():
                 "L": final_status, "P": safe_error(error, url), "Q": utc_now(),
             })
     print(json.dumps({"worker": worker_index, "attempted": attempted, "processed": processed}))
+    if vpnbook:
+        vpnbook.disconnect()
 
 
 if __name__ == "__main__":

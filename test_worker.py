@@ -45,6 +45,10 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(worker.proxy_session_cell(0), "T2")
         self.assertEqual(worker.proxy_session_cell(2), "T2")
 
+    def test_vpnbook_rotation_has_multiple_servers(self):
+        self.assertGreaterEqual(len(worker.VPNBOOK_SERVERS), 4)
+        self.assertEqual(len(worker.VPNBOOK_SERVERS), len(set(worker.VPNBOOK_SERVERS)))
+
 
 if __name__ == "__main__":
     unittest.main()
