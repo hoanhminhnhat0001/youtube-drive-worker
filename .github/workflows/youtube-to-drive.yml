@@ -30,7 +30,7 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg openvpn
       - run: pip install -r requirements.txt
       - name: Download and upload authorized videos
         env:
@@ -41,6 +41,7 @@ jobs:
           YOUTUBE_ROOT_FOLDER_ID: ${{ secrets.YOUTUBE_ROOT_FOLDER_ID }}
           YOUTUBE_COOKIES_B64: ${{ secrets.YOUTUBE_COOKIES_B64 }}
           YOUTUBE_SHEET_NAME: LINK YOUTUBE
+          VPNBOOK_ENABLED: 1
           WORKER_INDEX: ${{ matrix.worker }}
           WORKER_COUNT: 2
           MAX_VIDEOS: 10
