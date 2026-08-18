@@ -30,7 +30,11 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg openvpn
+      - name: Install OpenVPN with a hard timeout
+        run: |
+          command -v ffmpeg
+          timeout 90s sudo apt-get update
+          timeout 90s sudo apt-get install -y --no-install-recommends openvpn
       - run: pip install -r requirements.txt
       - name: Download and upload authorized videos
         env:
