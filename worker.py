@@ -335,7 +335,17 @@ def upload_video(drive, path, folder_id, marker):
     )
     response = None
     while response is None:
-        _, response = request.next_chunk()
+        status, response = request.next_chunk()
+        if status:
+            uploaded_mb = status.resumable_progress / (1024 * 1024)
+            total_mb = status.total_size / (1024 * 1024) if status.total_size else 0
+            print(json.dumps({
+                "status": "uploading",
+                "file": path.name,
+                "uploaded_mb": round(uploaded_mb, 1),
+                "total_mb": round(total_mb, 1),
+                "percent": round(status.progress() * 100, 1),
+            }, ensure_ascii=False), flush=True)
     if int(response.get("size", 0)) <= 0:
         raise RuntimeError("Drive upload returned an empty file")
     return response
