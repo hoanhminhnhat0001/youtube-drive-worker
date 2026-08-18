@@ -379,6 +379,7 @@ def main():
     worker_index = int(os.environ.get("WORKER_INDEX", "0"))
     worker_count = int(os.environ.get("WORKER_COUNT", "3"))
     max_videos = int(os.environ.get("MAX_VIDEOS", "10"))
+    ignore_previous_errors = os.environ.get("IGNORE_PREVIOUS_ERRORS", "").strip() == "1"
     root_folder_id = required("YOUTUBE_ROOT_FOLDER_ID")
 
     creds = credentials()
@@ -425,10 +426,12 @@ def main():
             previous_attempts = int(float(row[14] or 0))
         except (TypeError, ValueError):
             previous_attempts = 0
+        if ignore_previous_errors:
+            previous_attempts = 0
         candidates.append((previous_attempts, offset, row, url))
 
-    # Scan every catalog entry before retrying older failures repeatedly.
-    candidates.sort(key=lambda item: (item[0], item[1]))
+    # Always process the sheet from top to bottom, regardless of old failures.
+    candidates.sort(key=lambda item: item[1])
     processed = 0
     attempted = 0
     for previous_attempts, offset, row, url in candidates[:max_videos]:
@@ -460,7 +463,7 @@ def main():
             })
             processed += 1
         except Exception as error:
-            final_status = "" if attempts < 5 else "LỖI"
+            final_status = "" if ignore_previous_errors or attempts < 5 else "LỖI"
             update_row(sheets, sheet_id, sheet_name, offset, {
                 "L": final_status, "P": safe_error(error, url), "Q": utc_now(),
             })
