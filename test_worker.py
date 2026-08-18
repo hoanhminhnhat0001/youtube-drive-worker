@@ -43,7 +43,7 @@ class WorkerTests(unittest.TestCase):
 
     def test_proxy_session_cells_are_stable_per_worker(self):
         self.assertEqual(worker.proxy_session_cell(0), "T2")
-        self.assertEqual(worker.proxy_session_cell(2), "T4")
+        self.assertEqual(worker.proxy_session_cell(2), "T2")
 
 
 if __name__ == "__main__":

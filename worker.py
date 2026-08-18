@@ -154,7 +154,8 @@ def download_video(url, directory, proxy_session="", on_proxy_rotate=None):
 
 
 def proxy_session_cell(worker_index):
-    return f"T{worker_index + 2}"
+    # All workers share one authenticated YouTube IP/session.
+    return "T2"
 
 
 def load_proxy_session(sheets, sheet_id, sheet_name, worker_index):
@@ -170,12 +171,12 @@ def load_proxy_session(sheets, sheet_id, sheet_name, worker_index):
 
 
 def save_proxy_session(sheets, sheet_id, sheet_name, worker_index, session):
-    row = worker_index + 2
+    row = 2
     sheets.spreadsheets().values().update(
         spreadsheetId=sheet_id,
         range=f"'{sheet_name}'!S{row}:T{row}",
         valueInputOption="RAW",
-        body={"values": [[f"Worker {worker_index} proxy session", session]]},
+        body={"values": [["Shared proxy session", session]]},
     ).execute()
 
 
@@ -295,6 +296,9 @@ def main():
             if existing:
                 uploaded = existing
             else:
+                proxy_session = load_proxy_session(
+                    sheets, sheet_id, sheet_name, worker_index,
+                )
                 with tempfile.TemporaryDirectory(prefix="youtube-drive-") as temp:
                     path = download_video(
                         url, Path(temp), proxy_session=proxy_session,
