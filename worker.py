@@ -176,7 +176,8 @@ class ProtonVpnManager:
         command = [
             "sudo", "openvpn", "--config", str(config_path),
             "--auth-user-pass", str(auth_path), "--auth-nocache",
-            "--route-nopull", "--dev", "proton0", "--log", str(log_path),
+            "--route-nopull", "--dev", "proton0", "--dev-type", "tun",
+            "--log", str(log_path),
         ]
         self.process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         deadline = time.time() + 45
