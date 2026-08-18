@@ -101,8 +101,10 @@ def download_video(url, directory, proxy_session="", on_proxy_rotate=None):
     output = str(directory / "%(title).160B [%(id)s].%(ext)s")
     command = [
         "yt-dlp", "--no-playlist", "--newline", "--restrict-filenames",
-        "--retries", "5", "--fragment-retries", "5",
-        "--sleep-requests", "1", "--sleep-interval", "2", "--max-sleep-interval", "8",
+        "--socket-timeout", "12", "--retries", "2", "--fragment-retries", "2",
+        "--extractor-retries", "2", "--file-access-retries", "2",
+        "--retry-sleep", "2", "--sleep-requests", "1",
+        "--sleep-interval", "1", "--max-sleep-interval", "3",
         "--remote-components", "ejs:github",
         "--merge-output-format", "mp4",
         "-f", "bestvideo+bestaudio/best",
