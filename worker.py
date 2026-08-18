@@ -467,8 +467,15 @@ def main():
             processed += 1
         except Exception as error:
             final_status = "" if ignore_previous_errors or attempts < 5 else "LỖI"
+            error_message = safe_error(error, url)
+            print(json.dumps({
+                "worker": worker_index,
+                "row": offset,
+                "status": "failed",
+                "error": error_message,
+            }, ensure_ascii=False), flush=True)
             update_row(sheets, sheet_id, sheet_name, offset, {
-                "L": final_status, "P": safe_error(error, url), "Q": utc_now(),
+                "L": final_status, "P": error_message, "Q": utc_now(),
             })
     print(json.dumps({"worker": worker_index, "attempted": attempted, "processed": processed}))
     if vpnbook:
