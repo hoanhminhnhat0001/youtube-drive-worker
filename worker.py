@@ -151,6 +151,73 @@ class VpnBookManager:
         return self.connect()
 
 
+class ProtonVpnManager:
+    def __init__(self):
+        self.process = None
+        self.source_address = ""
+        self.temp_dir = Path(tempfile.mkdtemp(prefix="protonvpn-"))
+
+    def connect(self):
+        self.disconnect()
+        config_path = self.temp_dir / "proton.ovpn"
+        auth_path = self.temp_dir / "auth.txt"
+        log_path = self.temp_dir / "openvpn.log"
+        try:
+            config_path.write_bytes(base64.b64decode(required("PROTON_OPENVPN_CONFIG_B64"), validate=True))
+        except (ValueError, base64.binascii.Error) as error:
+            raise RuntimeError("PROTON_OPENVPN_CONFIG_B64 is invalid") from error
+        auth_path.write_text(
+            f"{required('PROTON_OPENVPN_USERNAME')}\n{required('PROTON_OPENVPN_PASSWORD')}\n",
+            encoding="utf-8",
+        )
+        auth_path.chmod(0o600)
+        log_path.touch()
+        log_path.chmod(0o666)
+        command = [
+            "sudo", "openvpn", "--config", str(config_path),
+            "--auth-user-pass", str(auth_path), "--auth-nocache",
+            "--route-nopull", "--dev", "proton0", "--log", str(log_path),
+        ]
+        self.process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        deadline = time.time() + 45
+        while time.time() < deadline:
+            if self.process.poll() is not None:
+                break
+            log_text = log_path.read_text(errors="replace") if log_path.exists() else ""
+            if "Initialization Sequence Completed" in log_text:
+                address = subprocess.run(
+                    ["bash", "-lc", "ip -o -4 addr show dev proton0 | awk '{print $4; exit}' | cut -d/ -f1"],
+                    capture_output=True, text=True, check=False,
+                ).stdout.strip()
+                if not address:
+                    time.sleep(1)
+                    continue
+                subprocess.run(["sudo", "ip", "rule", "add", "from", address, "table", "200"], check=False)
+                subprocess.run(["sudo", "ip", "route", "replace", "default", "dev", "proton0", "table", "200"], check=True)
+                self.source_address = address
+                return "US-FREE#119"
+            time.sleep(1)
+        tail = log_path.read_text(errors="replace")[-1200:] if log_path.exists() else ""
+        self.disconnect()
+        raise RuntimeError(f"Proton VPN failed to connect: {tail}")
+
+    def disconnect(self):
+        if self.source_address:
+            subprocess.run(["sudo", "ip", "rule", "del", "from", self.source_address, "table", "200"], check=False)
+            subprocess.run(["sudo", "ip", "route", "flush", "table", "200"], check=False)
+            self.source_address = ""
+        if self.process and self.process.poll() is None:
+            self.process.terminate()
+            try:
+                self.process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+        self.process = None
+
+    def rotate(self):
+        return self.connect()
+
+
 def required(name):
     value = os.environ.get(name, "").strip()
     if not value:
@@ -410,7 +477,10 @@ def main():
     ).execute().get("values", [])
     proxy_session = load_proxy_session(sheets, sheet_id, sheet_name, worker_index)
     vpnbook = None
-    if os.environ.get("VPNBOOK_ENABLED", "").strip() == "1":
+    if os.environ.get("PROTON_OPENVPN_CONFIG_B64", "").strip():
+        vpnbook = ProtonVpnManager()
+        vpnbook.connect()
+    elif os.environ.get("VPNBOOK_ENABLED", "").strip() == "1":
         vpnbook = VpnBookManager(sheets, sheet_id, sheet_name)
         vpnbook.connect()
 
