@@ -6,7 +6,7 @@ on:
     - cron: "*/20 * * * *"
 
 concurrency:
-  group: youtube-to-drive
+  group: youtube-to-drive-vpn-isolated
   cancel-in-progress: false
 
 permissions:
