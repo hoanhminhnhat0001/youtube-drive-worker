@@ -216,7 +216,15 @@ class ProtonVpnManager:
         self.process = None
 
     def rotate(self):
-        return self.connect()
+        # This free endpoint can authenticate successfully while its public IP is
+        # blocked by YouTube. Fall back to the runner network for this job.
+        self.disconnect()
+        print(json.dumps({
+            "network": "proton",
+            "status": "blocked",
+            "action": "fallback_to_github_runner",
+        }), flush=True)
+        return "direct"
 
 
 def required(name):
