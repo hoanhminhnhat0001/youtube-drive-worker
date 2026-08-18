@@ -18,9 +18,9 @@ jobs:
     timeout-minutes: 330
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 1
       matrix:
-        worker: [0, 1]
+        worker: [0]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -43,9 +43,12 @@ jobs:
           YOUTUBE_SHEET_ID: ${{ secrets.YOUTUBE_SHEET_ID }}
           YOUTUBE_ROOT_FOLDER_ID: ${{ secrets.YOUTUBE_ROOT_FOLDER_ID }}
           YOUTUBE_COOKIES_B64: ${{ secrets.YOUTUBE_COOKIES_B64 }}
+          PROTON_OPENVPN_USERNAME: ${{ secrets.PROTON_OPENVPN_USERNAME }}
+          PROTON_OPENVPN_PASSWORD: ${{ secrets.PROTON_OPENVPN_PASSWORD }}
+          PROTON_OPENVPN_CONFIG_B64: ${{ secrets.PROTON_OPENVPN_CONFIG_B64 }}
           YOUTUBE_SHEET_NAME: LINK YOUTUBE
-          VPNBOOK_ENABLED: 1
+          VPNBOOK_ENABLED: 0
           WORKER_INDEX: ${{ matrix.worker }}
-          WORKER_COUNT: 2
+          WORKER_COUNT: 1
           MAX_VIDEOS: 10
         run: python worker.py
