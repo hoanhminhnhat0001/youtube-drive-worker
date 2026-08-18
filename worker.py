@@ -200,10 +200,19 @@ def safe_error(error, url):
 def update_row(sheets, sheet_id, sheet_name, row_number, values):
     data = [{"range": f"'{sheet_name}'!{column}{row_number}", "values": [[value]]}
             for column, value in values.items()]
-    sheets.spreadsheets().values().batchUpdate(
-        spreadsheetId=sheet_id,
-        body={"valueInputOption": "RAW", "data": data},
-    ).execute()
+    last_error = None
+    for attempt in range(5):
+        try:
+            sheets.spreadsheets().values().batchUpdate(
+                spreadsheetId=sheet_id,
+                body={"valueInputOption": "RAW", "data": data},
+            ).execute()
+            return
+        except Exception as error:
+            last_error = error
+            if attempt < 4:
+                time.sleep(2 ** attempt)
+    raise last_error
 
 
 def find_existing_file(drive, marker):
