@@ -46,6 +46,7 @@ class VpnBookManager:
         self.sheet_name = sheet_name
         self.index = self._load_index()
         self.process = None
+        self.source_address = ""
         self.temp_dir = Path(tempfile.mkdtemp(prefix="vpnbook-"))
 
     def _load_index(self):
@@ -95,6 +96,7 @@ class VpnBookManager:
         command = [
             "sudo", "openvpn", "--config", str(config_path),
             "--auth-user-pass", str(auth_path), "--auth-nocache",
+            "--route-nopull",
             "--writepid", str(self.temp_dir / "openvpn.pid"),
             "--log", str(log_path),
         ]
@@ -104,6 +106,19 @@ class VpnBookManager:
             if self.process.poll() is not None:
                 break
             if log_path.exists() and "Initialization Sequence Completed" in log_path.read_text(errors="replace"):
+                address = subprocess.run(
+                    ["bash", "-lc", "ip -o -4 addr show | awk '$2 ~ /^tun/ {print $4; exit}' | cut -d/ -f1"],
+                    capture_output=True, text=True, check=False,
+                ).stdout.strip()
+                interface = subprocess.run(
+                    ["bash", "-lc", "ip -o -4 addr show | awk '$2 ~ /^tun/ {print $2; exit}'"],
+                    capture_output=True, text=True, check=False,
+                ).stdout.strip()
+                if not address or not interface:
+                    raise RuntimeError("VPNBook connected without a tunnel address")
+                subprocess.run(["sudo", "ip", "rule", "add", "from", address, "table", "200"], check=False)
+                subprocess.run(["sudo", "ip", "route", "replace", "default", "dev", interface, "table", "200"], check=True)
+                self.source_address = address
                 return server
             time.sleep(1)
         tail = log_path.read_text(errors="replace")[-1000:] if log_path.exists() else ""
@@ -111,6 +126,13 @@ class VpnBookManager:
         raise RuntimeError(f"VPNBook failed to connect: {tail}")
 
     def disconnect(self):
+        if self.source_address:
+            subprocess.run(
+                ["sudo", "ip", "rule", "del", "from", self.source_address, "table", "200"],
+                check=False,
+            )
+            subprocess.run(["sudo", "ip", "route", "flush", "table", "200"], check=False)
+            self.source_address = ""
         if self.process and self.process.poll() is None:
             self.process.terminate()
             try:
@@ -193,7 +215,8 @@ def find_existing_file(drive, marker):
     return files[0] if files else None
 
 
-def download_video(url, directory, proxy_session="", on_network_rotate=None):
+def download_video(url, directory, proxy_session="", on_network_rotate=None,
+                   source_address_provider=None):
     output = str(directory / "%(title).160B [%(id)s].%(ext)s")
     command = [
         "yt-dlp", "--no-playlist", "--newline", "--restrict-filenames",
@@ -221,6 +244,10 @@ def download_video(url, directory, proxy_session="", on_network_rotate=None):
     proxy_attempts = 3 if (proxy_template and "{session}" in proxy_template) or on_network_rotate else 1
     for attempt_index in range(proxy_attempts):
         attempt_command = list(command)
+        if source_address_provider:
+            source_address = source_address_provider()
+            if source_address:
+                attempt_command[1:1] = ["--source-address", source_address]
         if proxy_template:
             proxy_url = proxy_template.replace("{session}", active_session)
             attempt_command[1:1] = ["--proxy", proxy_url]
@@ -412,6 +439,7 @@ def main():
                     path = download_video(
                         url, Path(temp), proxy_session=proxy_session,
                         on_network_rotate=rotate_network if vpnbook or os.environ.get("YOUTUBE_PROXY") else None,
+                        source_address_provider=(lambda: vpnbook.source_address) if vpnbook else None,
                     )
                     uploaded = upload_video(drive, path, folder_id, marker)
             link = uploaded.get("webViewLink") or f"https://drive.google.com/file/d/{uploaded['id']}/view"
