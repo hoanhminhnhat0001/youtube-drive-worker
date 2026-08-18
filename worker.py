@@ -15,6 +15,7 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+import imageio_ffmpeg
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -232,6 +233,7 @@ def download_video(url, directory, proxy_session="", on_network_rotate=None,
     output = str(directory / "%(title).160B [%(id)s].%(ext)s")
     command = [
         "yt-dlp", "--no-playlist", "--newline", "--restrict-filenames",
+        "--ffmpeg-location", imageio_ffmpeg.get_ffmpeg_exe(),
         "--socket-timeout", "12", "--retries", "2", "--fragment-retries", "2",
         "--extractor-retries", "2", "--file-access-retries", "2",
         "--retry-sleep", "2", "--sleep-requests", "1",
