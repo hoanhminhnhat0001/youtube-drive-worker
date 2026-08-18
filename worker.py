@@ -93,6 +93,9 @@ class VpnBookManager:
         config_path.write_bytes(config)
         username, password = self._credentials()
         auth_path.write_text(f"{username}\n{password}\n", encoding="utf-8")
+        # OpenVPN runs as root, so create a runner-readable log before starting it.
+        log_path.touch()
+        log_path.chmod(0o666)
         command = [
             "sudo", "openvpn", "--config", str(config_path),
             "--auth-user-pass", str(auth_path), "--auth-nocache",
